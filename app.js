@@ -1,7 +1,10 @@
-// Lógica del prototipo: selección, análisis simulado y resultado.
+// Lógica del prototipo: selección, análisis simulado, resultado, comparación y encuesta.
 // Solo LEE el CATALOGO de datos.js; nunca lo modifica.
 
 const DURACION_PASO_MS = 650;
+const CLAVE_RESPUESTAS = "amueblia-respuestas";
+const CLAVE_VISTA = "amueblia-vista";
+const CLAVE_TEMA = "amueblia-tema";
 const PASOS_ANALISIS = ["Revisando la foto", "Midiendo el espacio", "Comprobando si el mueble cabe", "Ubicando el mueble en tu espacio"];
 // Veredictos que detienen el análisis: en qué paso (contado desde 1) y con qué marca.
 const PARADA_ANALISIS = {
@@ -14,11 +17,14 @@ const TEXTO_VEREDICTO = {
   "no-cabe": { titulo: "No cabe", clase: "veredicto-no-cabe", icono: "equis" },
   "foto-inadecuada": { titulo: "Necesitamos otra foto", clase: "veredicto-justo", icono: "alerta" },
 };
+const OPCIONES_ENCUESTA = ["Sí", "Más o menos", "No"];
 const ICONOS = {
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   equis: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   alerta: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/></svg>',
   subir: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5M7 10l5-5 5 5M5 19h14"/></svg>',
+  sol: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/></svg>',
+  luna: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
   externo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M17 14v5H5V7h5"/></svg>',
 };
 
@@ -29,6 +35,7 @@ const $ = (id) => document.getElementById(id);
 const buscarEspacio = (id) => CATALOGO.espacios.find((e) => e.id === id);
 const buscarMueble = (id) => CATALOGO.muebles.find((m) => m.id === id);
 const claveCombinacion = (espacioId, muebleId) => `${espacioId}__${muebleId}`;
+const buscarCombinacion = (espacioId, muebleId) => CATALOGO.combinaciones[claveCombinacion(espacioId, muebleId)];
 const formatoMetros = (cm) => `${(cm / 100).toLocaleString("es-CO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m`;
 const formatoCm = (cm) => cm.toLocaleString("es-CO");
 const formatoPrecio = (cop) => (cop == null ? "Precio por confirmar" : formatoPesos.format(cop));
@@ -48,6 +55,58 @@ function crearImagen(ruta, alt, clase = "") {
     img.replaceWith(aviso);
   });
   return img;
+}
+
+/* ---------- Vista de la página: teléfono o pantalla completa ---------- */
+
+function aplicarVista(vista) {
+  document.documentElement.dataset.vista = vista;
+  document.querySelectorAll(".selector-vista button").forEach((boton) => {
+    boton.setAttribute("aria-pressed", boton.dataset.vista === vista ? "true" : "false");
+  });
+  try { localStorage.setItem(CLAVE_VISTA, vista); } catch (error) { console.warn("No se pudo recordar la vista:", error); }
+}
+
+function vistaGuardada() {
+  try { return localStorage.getItem(CLAVE_VISTA) === "completa" ? "completa" : "telefono"; } catch { return "telefono"; }
+}
+
+/* ---------- Tema claro u oscuro ---------- */
+
+// Sin elección guardada manda el tema del sistema; el botón fija uno y lo recuerda.
+function temaActual() {
+  return document.documentElement.dataset.theme
+    ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+}
+
+function pintarBotonTema() {
+  const oscuro = temaActual() === "dark";
+  $("boton-tema").innerHTML = `${oscuro ? ICONOS.sol : ICONOS.luna}<span>${oscuro ? "Modo claro" : "Modo oscuro"}</span>`;
+}
+
+function alternarTema() {
+  const nuevo = temaActual() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = nuevo;
+  try { localStorage.setItem(CLAVE_TEMA, nuevo); } catch (error) { console.warn("No se pudo recordar el tema:", error); }
+  pintarBotonTema();
+}
+
+// Descarga las composiciones en segundo plano para que el resultado aparezca sin esperas.
+function precargarImagenes() {
+  Object.values(CATALOGO.combinaciones).forEach(({ imagen }) => { if (imagen) new Image().src = imagen; });
+}
+
+/* ---------- Selección ---------- */
+
+// Portada: un ejemplo real del catálogo (primera combinación con imagen) que se revela en bucle.
+function pintarPortada() {
+  const clave = Object.keys(CATALOGO.combinaciones).find((k) => CATALOGO.combinaciones[k].imagen);
+  if (!clave) return;
+  const espacio = buscarEspacio(clave.split("__")[0]);
+  const marco = $("portada-ejemplo");
+  marco.appendChild(crearImagen(CATALOGO.combinaciones[clave].imagen, "", "portada-despues"));
+  marco.appendChild(crearImagen(espacio.imagen, "", "portada-antes"));
+  marco.insertAdjacentHTML("beforeend", '<span class="portada-linea"></span>');
 }
 
 function crearTarjeta({ seleccionada, imagen, alt, titulo, detalle, alPulsar }) {
@@ -108,6 +167,7 @@ function pintarSeleccion() {
   const espacio = buscarEspacio(estado.espacioId);
   const mueble = buscarMueble(estado.muebleId);
   $("boton-ver").disabled = !(espacio && mueble);
+  $("barra-accion").classList.toggle("barra-lista", Boolean(espacio && mueble));
   $("resumen-seleccion").innerHTML = espacio && mueble
     ? `<strong>${mueble.nombre}</strong> en <strong>${espacio.nombre}</strong>`
     : espacio ? `<strong>${espacio.nombre}</strong> · ahora elige un mueble`
@@ -115,22 +175,26 @@ function pintarSeleccion() {
     : "Elige un espacio y un mueble";
 }
 
+/* ---------- Análisis simulado ---------- */
+
 function cancelarTemporizadores() {
   cancelAnimationFrame(estado.animacionCorte);
   estado.temporizadores.forEach(clearTimeout);
   estado.temporizadores = [];
 }
 
+// Lleva al inicio tanto la pantalla del teléfono simulado como la ventana (pantalla completa).
 function mostrarVista(id) {
   $("vista-elegir").hidden = id !== "vista-elegir";
   $("vista-resultado").hidden = id !== "vista-resultado";
-  window.scrollTo({ top: 0 });
+  $("pantalla").scrollTo({ top: 0 });
+  if (document.documentElement.dataset.vista === "completa" || window.innerWidth <= 640) window.scrollTo({ top: 0 });
 }
 
 // Animación del análisis. Se detiene en el paso que falla: medir (foto inadecuada) o cabida (no cabe).
 function iniciarAnalisis() {
   cancelarTemporizadores();
-  const combinacion = CATALOGO.combinaciones[claveCombinacion(estado.espacioId, estado.muebleId)];
+  const combinacion = buscarCombinacion(estado.espacioId, estado.muebleId);
   mostrarVista("vista-resultado");
   $("resultado").hidden = true;
   $("analisis").hidden = false;
@@ -161,6 +225,8 @@ function marcarPaso(item, tipo) {
   item.querySelector(".paso-icono").innerHTML = icono;
 }
 
+/* ---------- Resultado ---------- */
+
 function mostrarResultado(combinacion) {
   const espacio = buscarEspacio(estado.espacioId);
   const mueble = buscarMueble(estado.muebleId);
@@ -171,6 +237,8 @@ function mostrarResultado(combinacion) {
   pintarMedidas(espacio, mueble, combinacion);
   pintarFicha(mueble);
   pintarSugerencia(espacio, mueble, combinacion);
+  pintarComparacion(espacio, mueble);
+  pintarEncuesta(espacio, mueble, combinacion);
 }
 
 function pintarImagenResultado(espacio, mueble, combinacion) {
@@ -302,49 +370,169 @@ function pintarFicha(mueble) {
     </div>`);
 }
 
-// Si no cabe, lista los muebles del catálogo que sí caben en ese espacio, cada uno con su botón.
-// Alternativas cuando no hay imagen:
-// - no cabe: los muebles que sí caben en ESTE espacio;
-// - foto inadecuada: los espacios donde ESTE mueble sí se puede ver.
+// Cambia la selección y vuelve a analizar (lo usan la sugerencia y la comparación).
+function probar({ espacioId = estado.espacioId, muebleId = estado.muebleId }) {
+  estado.espacioId = espacioId;
+  estado.muebleId = muebleId;
+  pintarSeleccion();
+  iniciarAnalisis();
+}
+
+// Con foto inadecuada: los otros espacios donde ESTE mueble sí se puede ver.
+// (Con "no cabe" no hace falta: la comparación de abajo ya muestra los muebles que sí caben.)
 function pintarSugerencia(espacio, mueble, combinacion) {
   const caja = $("sugerencia");
-  caja.hidden = combinacion.imagen !== null;
+  caja.hidden = combinacion.veredicto !== "foto-inadecuada";
   if (caja.hidden) return;
-  const sirve = (espacioId, muebleId) =>
-    ["cabe", "justo"].includes(CATALOGO.combinaciones[claveCombinacion(espacioId, muebleId)]?.veredicto);
-  const porMueble = combinacion.veredicto === "no-cabe";
-  const opciones = porMueble
-    ? CATALOGO.muebles.filter((m) => sirve(espacio.id, m.id)).map((m) => ({
-        titulo: m.nombre, detalle: `${textoMedidas(m.medidasCm)} · ${formatoPrecio(m.precioCop)}`,
-        elegir: () => { estado.muebleId = m.id; } }))
-    : CATALOGO.espacios.filter((e) => sirve(e.id, mueble.id)).map((e) => ({
-        titulo: e.nombre, detalle: e.descripcion,
-        elegir: () => { estado.espacioId = e.id; } }));
-  if (opciones.length === 0) {
-    caja.innerHTML = "<p>No hay otra opción del catálogo para probar.</p>";
+  const espacios = CATALOGO.espacios.filter((e) => ["cabe", "justo"].includes(buscarCombinacion(e.id, mueble.id)?.veredicto));
+  if (espacios.length === 0) {
+    caja.innerHTML = "<p>No hay otro espacio del catálogo donde probarlo.</p>";
     return;
   }
-  caja.innerHTML = `<h3>${porMueble ? "En este espacio sí caben" : "Pruébalo en otro de tus espacios"}</h3><ul class="alternativas"></ul>`;
-  opciones.forEach((opcion) => {
+  caja.innerHTML = `<h3>Pruébalo en otro de tus espacios</h3><ul class="alternativas"></ul>`;
+  espacios.forEach((otro) => {
     const item = document.createElement("li");
     item.innerHTML = `
-      <span><strong>${opcion.titulo}</strong><br><small>${opcion.detalle}</small></span>
+      <span><strong>${otro.nombre}</strong><br><small>${otro.descripcion}</small></span>
       <button class="boton-secundario" type="button">Probar</button>`;
-    item.querySelector("button").addEventListener("click", () => {
-      opcion.elegir();
-      pintarSeleccion();
-      iniciarAnalisis();
-    });
+    item.querySelector("button").addEventListener("click", () => probar({ espacioId: otro.id }));
     caja.querySelector("ul").appendChild(item);
   });
 }
+
+/* ---------- Comparación de los muebles del catálogo en el mismo espacio ---------- */
+
+function pintarComparacion(espacio, muebleActual) {
+  const seccion = $("comparacion");
+  seccion.innerHTML = `
+    <h3>Compara en tu ${espacio.nombre.toLowerCase()}</h3>
+    <p class="comparacion-intro">Los muebles del catálogo en este mismo espacio.</p>
+    <div class="comparacion-lista"></div>`;
+  const lista = seccion.querySelector(".comparacion-lista");
+  CATALOGO.muebles.forEach((mueble) => {
+    const combinacion = buscarCombinacion(espacio.id, mueble.id);
+    if (!combinacion) return;
+    const { titulo, clase } = TEXTO_VEREDICTO[combinacion.veredicto];
+    const actual = mueble.id === muebleActual.id;
+    const pared = combinacion.paredLibreCm ?? espacio.paredLibreCm;
+    const detalle = combinacion.imagen
+      ? `Quedan ${formatoCm(pared - mueble.medidasCm.ancho)} cm de pared`
+      : "No se genera imagen";
+    const tarjeta = document.createElement("article");
+    tarjeta.className = `comparacion-tarjeta${actual ? " comparacion-actual" : ""}`;
+    const marco = document.createElement("div");
+    marco.className = `comparacion-imagen${combinacion.imagen ? "" : " comparacion-sin-imagen"}`;
+    marco.appendChild(crearImagen(combinacion.imagen ?? espacio.imagen, `${mueble.nombre} en ${espacio.nombre}`));
+    marco.insertAdjacentHTML("beforeend", `<span class="insignia ${clase}">${titulo}</span>`);
+    tarjeta.appendChild(marco);
+    tarjeta.insertAdjacentHTML("beforeend", `
+      <p class="comparacion-nombre">${mueble.nombre}</p>
+      <p class="comparacion-precio">${formatoPrecio(mueble.precioCop)}</p>
+      <p class="comparacion-detalle">${detalle}</p>
+      ${actual ? `<span class="comparacion-viendo">Lo estás viendo</span>` : `<button class="boton-secundario" type="button">Ver este</button>`}`);
+    tarjeta.querySelector("button")?.addEventListener("click", () => probar({ muebleId: mueble.id }));
+    lista.appendChild(tarjeta);
+  });
+}
+
+/* ---------- Encuesta de validación (respuestas en localStorage de este dispositivo) ---------- */
+
+function leerRespuestas() {
+  try { return JSON.parse(localStorage.getItem(CLAVE_RESPUESTAS)) ?? []; } catch { return []; }
+}
+
+// Devuelve false si el navegador no deja guardar (modo privado, almacenamiento bloqueado).
+function guardarRespuesta(respuesta) {
+  try {
+    localStorage.setItem(CLAVE_RESPUESTAS, JSON.stringify([...leerRespuestas(), respuesta]));
+    return true;
+  } catch (error) {
+    console.error("No se pudo guardar la respuesta:", error);
+    return false;
+  }
+}
+
+function pintarEncuesta(espacio, mueble, combinacion) {
+  const seccion = $("encuesta");
+  seccion.innerHTML = `
+    <h3>¿Este resultado te ayudó a decidir?</h3>
+    <div class="encuesta-opciones">
+      ${OPCIONES_ENCUESTA.map((opcion) => `<button type="button" aria-pressed="false">${opcion}</button>`).join("")}
+    </div>
+    <label class="encuesta-comentario"><span>¿Por qué? <small>(opcional)</small></span>
+      <textarea rows="2" maxlength="300"></textarea>
+    </label>
+    <button type="button" class="boton-principal" disabled>Enviar respuesta</button>`;
+  const enviar = seccion.querySelector(".boton-principal");
+  let elegida = null;
+  seccion.querySelectorAll(".encuesta-opciones button").forEach((boton) => {
+    boton.addEventListener("click", () => {
+      elegida = boton.textContent;
+      seccion.querySelectorAll(".encuesta-opciones button").forEach((b) => b.setAttribute("aria-pressed", b === boton ? "true" : "false"));
+      enviar.disabled = false;
+    });
+  });
+  enviar.addEventListener("click", () => {
+    const guardada = guardarRespuesta({
+      fecha: new Date().toISOString(),
+      espacio: espacio.nombre,
+      mueble: mueble.nombre,
+      veredicto: TEXTO_VEREDICTO[combinacion.veredicto].titulo,
+      respuesta: elegida,
+      comentario: seccion.querySelector("textarea").value.trim(),
+    });
+    seccion.innerHTML = guardada
+      ? `<p class="encuesta-gracias">${ICONOS.check} Gracias. Tu respuesta quedó guardada.</p>`
+      : `<p class="encuesta-error">${ICONOS.alerta} No se pudo guardar la respuesta: el navegador bloqueó el almacenamiento.</p>`;
+    pintarConteoRespuestas();
+  });
+}
+
+function pintarConteoRespuestas() {
+  const total = leerRespuestas().length;
+  $("pruebas-conteo").innerHTML = `<strong>${total}</strong> ${total === 1 ? "respuesta" : "respuestas"}`;
+  $("boton-exportar").disabled = total === 0;
+  $("boton-borrar").disabled = total === 0;
+}
+
+// CSV con BOM y punto y coma, que es lo que Excel en español abre directo en columnas.
+function exportarRespuestas() {
+  const columnas = ["fecha", "espacio", "mueble", "veredicto", "respuesta", "comentario"];
+  const celda = (valor) => `"${String(valor ?? "").replaceAll('"', '""')}"`;
+  const filas = [columnas.join(";"), ...leerRespuestas().map((r) => columnas.map((c) => celda(r[c])).join(";"))];
+  const enlace = document.createElement("a");
+  enlace.href = URL.createObjectURL(new Blob(["﻿" + filas.join("\r\n")], { type: "text/csv;charset=utf-8" }));
+  enlace.download = "amueblia-respuestas.csv";
+  enlace.click();
+  URL.revokeObjectURL(enlace.href);
+}
+
+function borrarRespuestas() {
+  if (!confirm("¿Borrar todas las respuestas guardadas en este dispositivo?")) return;
+  try { localStorage.removeItem(CLAVE_RESPUESTAS); } catch (error) { console.error("No se pudieron borrar las respuestas:", error); }
+  pintarConteoRespuestas();
+}
+
+/* ---------- Arranque ---------- */
 
 function volverAElegir() {
   cancelarTemporizadores();
   mostrarVista("vista-elegir");
 }
 
+document.querySelectorAll(".selector-vista button").forEach((boton) => {
+  boton.addEventListener("click", () => aplicarVista(boton.dataset.vista));
+});
+$("boton-tema").addEventListener("click", alternarTema);
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", pintarBotonTema);
 $("boton-ver").addEventListener("click", iniciarAnalisis);
 $("boton-volver").addEventListener("click", volverAElegir);
 $("logo-inicio").addEventListener("click", (evento) => { evento.preventDefault(); volverAElegir(); });
+$("boton-exportar").addEventListener("click", exportarRespuestas);
+$("boton-borrar").addEventListener("click", borrarRespuestas);
+aplicarVista(vistaGuardada());
+pintarPortada();
 pintarSeleccion();
+pintarConteoRespuestas();
+pintarBotonTema();
+window.addEventListener("load", precargarImagenes);
