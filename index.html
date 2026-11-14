@@ -19,7 +19,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="estilos.css">
+  <!-- Al cambiar estilos.css, datos.js o app.js, subir el número de ?v= para que no se use la copia guardada del navegador. -->
+  <link rel="stylesheet" href="estilos.css?v=3">
 </head>
 <body>
   <!-- Franja de la página (fuera de la app): modo demostración y selector de vista -->
@@ -135,7 +136,7 @@
       </div>
     </div>
 
-    <div class="pruebas">
+    <div class="pruebas" id="pruebas" hidden>
       <div>
         <h3>Prueba con usuarios</h3>
         <p>Después de cada resultado la app pregunta si ayudó a decidir. Las respuestas se guardan solo en este dispositivo.</p>
@@ -146,7 +147,7 @@
     </div>
   </section>
 
-  <script src="datos.js"></script>
-  <script src="app.js"></script>
+  <script src="datos.js?v=3"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

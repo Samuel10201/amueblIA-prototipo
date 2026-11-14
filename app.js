@@ -534,5 +534,7 @@ aplicarVista(vistaGuardada());
 pintarPortada();
 pintarSeleccion();
 pintarConteoRespuestas();
+// El bloque para descargar las respuestas solo aparece si la dirección lleva ?respuestas (uso del equipo).
+$("pruebas").hidden = !new URLSearchParams(location.search).has("respuestas");
 pintarBotonTema();
 window.addEventListener("load", precargarImagenes);
